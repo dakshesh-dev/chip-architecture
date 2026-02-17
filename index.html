@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ENTERPRISE CHIP ARCHITECT V11.0 | FINAL BUILD</title>
+    <title>ENTERPRISE CHIP ARCHITECT V12.0 | REALISM BUILD</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -112,7 +112,7 @@
 </head>
 <body>
 
-    <div id="loader">INITIALIZING SILICON FABRIC...</div>
+    <div id="loader">FABRICATING SILICON DIE...</div>
 
     <div id="hud-layer">
         <div class="top-bar hud-panel">
@@ -154,7 +154,7 @@
 <script>
 /**
  * ------------------------------------------------------------------
- * ENTERPRISE CHIP ARCHITECT V11 (FINAL)
+ * ENTERPRISE CHIP ARCHITECT V12 (REALISM BUILD)
  * ------------------------------------------------------------------
  */
 
@@ -261,13 +261,93 @@ function resize() {
     canvas.height = window.innerHeight;
 }
 
+class Packet {
+    constructor() {
+        this.active = true;
+        this.segment = 0;
+        
+        // Pick random target core
+        const cores = state.nodes.filter(n => n.type === 'CORE');
+        const target = cores[Math.floor(Math.random() * cores.length)];
+        
+        this.path = [];
+
+        if (state.arch === 'FPGA') {
+            // MANHATTAN ROUTING PATTERN (Circuit Traces)
+            // 1. Start Left (PCIe)
+            // 2. Travel Horizontal to correct column
+            // 3. Travel Vertical to core
+            // 4. Output Right
+            
+            const startY = 500; // Bus entrance
+            
+            this.path = [
+                {x: 0, y: startY},             // In
+                {x: target.x, y: startY},      // Horizontal Bus Move
+                {x: target.x, y: target.y},    // Vertical Branch
+                {x: 1000, y: target.y}         // Output
+            ];
+            
+            this.pos = { ...this.path[0] };
+            this.speed = 15;
+            
+        } else {
+            // CPU SERIAL PATTERN
+            // 1. RAM (Top)
+            // 2. L3 (Center)
+            // 3. Core
+            // 4. L3 (Center)
+            this.path = [
+                {x: 500, y: 0},
+                {x: 500, y: 500},
+                {x: target.x, y: target.y},
+                {x: 500, y: 500}
+            ];
+            this.pos = { ...this.path[0] };
+            this.speed = 8;
+        }
+    }
+    
+    update() {
+        if(!this.active) return;
+        
+        const target = this.path[this.segment + 1];
+        if(!target) {
+            this.active = false;
+            return;
+        }
+        
+        const dx = target.x - this.pos.x;
+        const dy = target.y - this.pos.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        
+        if(dist < this.speed) {
+            // Reached waypoint
+            this.pos.x = target.x;
+            this.pos.y = target.y;
+            this.segment++;
+            
+            // Hit Check
+            state.nodes.forEach(n => {
+                 if (Math.abs(n.x - this.pos.x) < 20 && Math.abs(n.y - this.pos.y) < 20) {
+                     n.load = 1.0;
+                 }
+            });
+        } else {
+            // Move
+            this.pos.x += (dx/dist) * this.speed;
+            this.pos.y += (dy/dist) * this.speed;
+        }
+    }
+}
+
 function draw2D() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     const isBlue = state.view === 'BLUEPRINT';
     const theme = CONFIG[state.arch];
     
-    // Scale to fit 1000x1000 virtual space into screen
+    // Scale Viewport
     ctx.save();
     const scale = Math.min(canvas.width/1200, canvas.height/1200);
     const offsetX = (canvas.width - 1000*scale)/2;
@@ -280,12 +360,15 @@ function draw2D() {
     ctx.lineWidth = 2;
     
     if (state.arch === 'FPGA') {
-        // Grid Mesh
-        for(let i=0; i<=8; i++) {
-            let p = 220 + (i*80);
-            ctx.beginPath(); ctx.moveTo(p, 220); ctx.lineTo(p, 780); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(220, p); ctx.lineTo(780, p); ctx.stroke();
+        // Bus Lines (Horizontal)
+        ctx.beginPath();
+        ctx.moveTo(0, 500); ctx.lineTo(1000, 500); // Main Bus
+        // Vertical drops
+        for(let i=0; i<8; i++) {
+            let x = 220 + (i*80);
+            ctx.moveTo(x, 220); ctx.lineTo(x, 780);
         }
+        ctx.stroke();
     } else {
         // Ring Bus
         ctx.beginPath();
@@ -300,16 +383,13 @@ function draw2D() {
 
     // DRAW NODES
     state.nodes.forEach(n => {
-        if (n.type === 'CACHE') return; // Don't draw L3 as a node
+        if (n.type === 'CACHE') return;
         
         const size = state.arch === 'FPGA' ? 40 : 80;
-        
-        // Load Calculation
         let active = n.load > 0.05;
         let color = active ? theme.color : '#21262d';
         
         if (isBlue) {
-            // Blueprint Style
             ctx.strokeStyle = '#fff';
             ctx.lineWidth = 1;
             ctx.strokeRect(n.x - size/2, n.y - size/2, size, size);
@@ -317,11 +397,7 @@ function draw2D() {
             ctx.moveTo(n.x-size/2, n.y-size/2); 
             ctx.lineTo(n.x+size/2, n.y+size/2); 
             ctx.stroke();
-            ctx.fillStyle = '#fff';
-            ctx.font = '10px monospace';
-            ctx.fillText(n.id, n.x - 5, n.y - size/2 - 5);
         } else {
-            // Live Style
             ctx.fillStyle = color;
             ctx.globalAlpha = active ? 1 : 0.4;
             
@@ -336,16 +412,9 @@ function draw2D() {
             ctx.fillRect(n.x - size/2, n.y - size/2, size, size);
             ctx.strokeRect(n.x - size/2, n.y - size/2, size, size);
             
-            // Core Text
             ctx.globalAlpha = 1;
-            ctx.fillStyle = '#fff';
             ctx.shadowBlur = 0;
-            ctx.font = state.arch === 'FPGA' ? '8px monospace' : '12px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText(state.arch === 'FPGA' ? '' : 'CORE', n.x, n.y+4);
         }
-        
-        // Decay
         n.load *= 0.9;
     });
 
@@ -354,22 +423,20 @@ function draw2D() {
         state.packets.forEach(p => {
             ctx.fillStyle = '#fff';
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 4, 0, Math.PI*2);
+            ctx.arc(p.pos.x, p.pos.y, 3, 0, Math.PI*2);
             ctx.fill();
-            // Simple trail
-            ctx.strokeStyle = theme.color;
-            ctx.beginPath();
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(p.x - p.vx*5, p.y - p.vy*5);
-            ctx.stroke();
         });
+    } else {
+        ctx.fillStyle = '#fff';
+        ctx.font = '20px monospace';
+        ctx.fillText("FIG 1.1: ARCHITECTURAL BLUEPRINT", 50, 950);
     }
-
+    
     ctx.restore();
 }
 
 // =========================================================================
-// 3. 3D SILICON ENGINE (THREE.JS)
+// 3. 3D SILICON ENGINE (REALISM MODE - NO FLASHING)
 // =========================================================================
 
 let scene, camera, renderer, controls, chipGroup;
@@ -377,25 +444,34 @@ let scene, camera, renderer, controls, chipGroup;
 function init3D() {
     const container = document.getElementById('container-3d');
     
-    scene = new THREE.Scene(); // Transparent background
+    scene = new THREE.Scene();
     
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 3000);
-    camera.position.set(0, 500, 600);
+    camera.position.set(0, 600, 600);
     
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
     container.appendChild(renderer.domElement);
     
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.8;
+    controls.autoRotateSpeed = 1.0;
     
-    const amb = new THREE.AmbientLight(0xffffff, 0.4);
-    scene.add(amb);
-    const dir = new THREE.DirectionalLight(0xffffff, 1);
-    dir.position.set(100, 200, 100);
-    scene.add(dir);
+    // STUDIO LIGHTING
+    const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+    scene.add(ambient);
+    
+    const spot = new THREE.SpotLight(0xffffff, 1.5);
+    spot.position.set(500, 800, 500);
+    spot.lookAt(0,0,0);
+    scene.add(spot);
+    
+    const blueRim = new THREE.PointLight(0x4455ff, 1);
+    blueRim.position.set(-500, 200, -500);
+    scene.add(blueRim);
     
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
@@ -408,164 +484,113 @@ function build3DScene() {
     if (chipGroup) scene.remove(chipGroup);
     chipGroup = new THREE.Group();
     
-    const theme = CONFIG[state.arch];
-    const matBase = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2 });
-    const matNode = new THREE.MeshStandardMaterial({ 
-        color: 0x222222, 
-        emissive: theme.color, 
-        emissiveIntensity: 0.1,
-        roughness: 0.4,
-        metalness: 0.8
+    // MATERIAL LIBRARY (REALISTIC)
+    const matPCB = new THREE.MeshStandardMaterial({ 
+        color: 0x004400, roughness: 0.8, metalness: 0.1 
+    });
+    const matSilicon = new THREE.MeshStandardMaterial({ 
+        color: 0x111111, roughness: 0.2, metalness: 0.6 
+    });
+    const matGold = new THREE.MeshStandardMaterial({ 
+        color: 0xffaa00, roughness: 0.1, metalness: 1.0 
+    });
+    const matSilverIHS = new THREE.MeshStandardMaterial({ 
+        color: 0xdddddd, roughness: 0.3, metalness: 0.9 
     });
     
-    // Substrate
-    const base = new THREE.Mesh(new THREE.BoxGeometry(700, 10, 700), matBase);
-    base.position.y = -10;
-    chipGroup.add(base);
+    // 1. PCB SUBSTRATE (Green Board)
+    const pcb = new THREE.Mesh(new THREE.BoxGeometry(700, 10, 700), matPCB);
+    pcb.position.y = -10;
+    chipGroup.add(pcb);
     
-    // Nodes
-    state.nodes.forEach((n, i) => {
-        if (n.type === 'CACHE') return;
+    // 2. GOLD PINS (Decorative)
+    for(let i=0; i<4; i++) {
+        const pin = new THREE.Mesh(new THREE.BoxGeometry(600, 2, 10), matGold);
+        if(i<2) pin.position.set(0, -4, i===0 ? 320 : -320);
+        else {
+            pin.rotation.y = Math.PI/2;
+            pin.position.set(i===2 ? 320 : -320, -4, 0);
+        }
+        chipGroup.add(pin);
+    }
+
+    if (state.arch === 'FPGA') {
+        // FPGA LOOK: Naked Die (Black square in middle) + Caps
+        const die = new THREE.Mesh(new THREE.BoxGeometry(400, 20, 400), matSilicon);
+        die.position.y = 5;
+        chipGroup.add(die);
         
-        let size = state.arch === 'FPGA' ? 40 : 100;
-        let h = 20 + Math.random() * 20;
+        // Add tiny capacitors around the die
+        const capGeo = new THREE.BoxGeometry(20, 10, 40);
+        const matCap = new THREE.MeshStandardMaterial({color: 0xaaaaaa});
+        for(let i=0; i<10; i++) {
+            const cap = new THREE.Mesh(capGeo, matCap);
+            cap.position.set(-250, 0, -200 + (i*50));
+            chipGroup.add(cap);
+        }
+
+    } else {
+        // CPU LOOK: Silver Heat Spreader (IHS)
+        // Complex shape: base plate + raised center
+        const ihsBase = new THREE.Mesh(new THREE.BoxGeometry(500, 15, 500), matSilverIHS);
+        ihsBase.position.y = 5;
+        chipGroup.add(ihsBase);
         
-        const mesh = new THREE.Mesh(new THREE.BoxGeometry(size, h, size), matNode.clone());
-        
-        // Map 1000x1000 2D coords to 3D center-zeroed space
-        let x = n.x - 500;
-        let z = n.y - 500;
-        
-        mesh.position.set(x, h/2, z);
-        mesh.userData = { id: i }; // Bind to logic node index
-        chipGroup.add(mesh);
-    });
+        const ihsTop = new THREE.Mesh(new THREE.BoxGeometry(350, 5, 350), matSilverIHS);
+        ihsTop.position.y = 15;
+        chipGroup.add(ihsTop);
+    }
     
     scene.add(chipGroup);
-}
-
-function update3D() {
-    // Sync 3D meshes with 2D logic state
-    chipGroup.children.forEach(mesh => {
-        if (mesh.userData.id === undefined) return;
-        
-        const node = state.nodes[mesh.userData.id];
-        if (node && node.load > 0.05) {
-            mesh.material.emissiveIntensity = 0.2 + (node.load * 2);
-            mesh.scale.y = 1 + (node.load * 0.5);
-        } else {
-            mesh.material.emissiveIntensity = 0.1;
-            mesh.scale.y = 1;
-        }
-    });
-    
-    controls.update();
-    renderer.render(scene, camera);
 }
 
 // =========================================================================
 // 4. ANIMATION LOOP & CONTROLLERS
 // =========================================================================
 
-class Packet {
-    constructor() {
-        this.active = true;
-        this.vx = 0;
-        this.vy = 0;
-        
-        // Pick random target core
-        const cores = state.nodes.filter(n => n.type === 'CORE');
-        const target = cores[Math.floor(Math.random() * cores.length)];
-        
-        if (state.arch === 'FPGA') {
-            // Left to Right Flow
-            this.x = 0; 
-            this.y = target.y;
-            this.tx = 1000;
-            this.ty = target.y;
-            this.speed = 15;
-        } else {
-            // Top (RAM) to Center (Cache) to Core
-            this.x = 500;
-            this.y = 0;
-            this.tx = target.x;
-            this.ty = target.y;
-            this.speed = 8; // CPU slower visually
-        }
-    }
-    
-    update() {
-        const dx = this.tx - this.x;
-        const dy = this.ty - this.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        
-        if (dist < 10) {
-            this.active = false;
-            // Hit logic
-            state.nodes.forEach(n => {
-                // If packet is near a node, light it up
-                // Simplified hit detection for visual effect
-                if (Math.abs(n.x - this.x) < 60 && Math.abs(n.y - this.y) < 60) {
-                    n.load = 1.0;
-                }
-            });
-        } else {
-            this.vx = (dx/dist) * this.speed;
-            this.vy = (dy/dist) * this.speed;
-            this.x += this.vx;
-            this.y += this.vy;
-            
-            // Mid-flight collision check (lighting up nodes as it passes)
-            state.nodes.forEach(n => {
-                if (Math.abs(n.x - this.x) < 40 && Math.abs(n.y - this.y) < 40) {
-                    n.load = 1.0;
-                }
-            });
-        }
-    }
-}
-
 function animate() {
     state.frame++;
     
-    // Spawn Packets
-    const rate = state.stress ? 5 : 20;
+    // SPAWN PACKETS
+    const rate = state.stress ? 2 : 10;
     if (state.frame % rate === 0) {
         state.packets.push(new Packet());
     }
     
-    // Update Packets
+    // UPDATE LOGIC
     state.packets.forEach(p => p.update());
     state.packets = state.packets.filter(p => p.active);
     
-    // Update UI Stats
+    // UPDATE UI (TPS Stats)
     if (state.frame % 10 === 0) {
-        // TPS
         const base = CONFIG[state.arch].tpsBase;
         const active = state.nodes.filter(n => n.load > 0.05).length;
-        document.getElementById('val-tps').innerText = Math.floor(base + (active * 150)).toLocaleString() + " TPS";
+        document.getElementById('val-tps').innerText = Math.floor(base + (state.packets.length * 100)).toLocaleString() + " TPS";
         document.getElementById('val-active').innerText = active;
         
-        // Mini Grid
+        // Update Mini Grid (Lights up in HUD, but not in 3D)
         const minis = document.getElementsByClassName('mini-node');
         const themeClass = state.arch === 'FPGA' ? 'lit-fpga' : 'lit-cpu';
         state.nodes.forEach((n, i) => {
             if (minis[i]) {
-                if (n.load > 0.05) minis[i].classList.add(themeClass);
+                if (n.type === 'CORE' && n.load > 0.05) minis[i].classList.add(themeClass);
                 else minis[i].classList.remove(themeClass);
             }
         });
     }
 
-    // Render
-    if (state.view === '3D') update3D();
-    else draw2D();
+    // RENDER
+    if (state.view === '3D') {
+        controls.update();
+        renderer.render(scene, camera);
+    } else {
+        draw2D();
+    }
     
     requestAnimationFrame(animate);
 }
 
-// --- CONTROLS ---
-
+// CONTROLS
 function setArch(arch) {
     if (state.arch === arch) return;
     state.arch = arch;
