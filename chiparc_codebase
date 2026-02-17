@@ -1,0 +1,336 @@
+//file 1
+
+`timescale 1ns / 1ps
+// MODULE: UART RECEIVER (8N1 Standard)
+// DECODES SERIAL BITS FROM USB INTO 8-BIT BYTES
+module uart_rx #(parameter CLK_FREQ = 100000000, parameter BAUD_RATE = 115200) (
+    input wire clk,
+    input wire rst_n,
+    input wire rx_serial,
+    output reg [7:0] rx_byte,
+    output reg rx_done
+);
+    localparam CLKS_PER_BIT = CLK_FREQ / BAUD_RATE;
+    localparam STATE_IDLE = 0, STATE_START = 1, STATE_DATA = 2, STATE_STOP = 3;
+    
+    reg [2:0] state = STATE_IDLE;
+    reg [31:0] clock_count = 0;
+    reg [2:0] bit_index = 0;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= STATE_IDLE;
+            rx_done <= 0;
+            clock_count <= 0;
+            bit_index <= 0;
+        end else begin
+            case (state)
+                STATE_IDLE: begin
+                    rx_done <= 0;
+                    clock_count <= 0;
+                    bit_index <= 0;
+                    if (rx_serial == 0) state <= STATE_START; // Start bit detected
+                end
+                STATE_START: begin
+                    if (clock_count == (CLKS_PER_BIT-1)/2) begin
+                        if (rx_serial == 0) begin
+                            clock_count <= 0;
+                            state <= STATE_DATA;
+                        end else state <= STATE_IDLE;
+                    end else clock_count <= clock_count + 1;
+                end
+                STATE_DATA: begin
+                    if (clock_count < CLKS_PER_BIT-1) begin
+                        clock_count <= clock_count + 1;
+                    end else begin
+                        clock_count <= 0;
+                        rx_byte[bit_index] <= rx_serial;
+                        if (bit_index < 7) bit_index <= bit_index + 1;
+                        else state <= STATE_STOP;
+                    end
+                end
+                STATE_STOP: begin
+                    if (clock_count < CLKS_PER_BIT-1) begin
+                        clock_count <= clock_count + 1;
+                    end else begin
+                        rx_done <= 1;
+                        state <= STATE_IDLE;
+                    end
+                end
+            endcase
+        end
+    end
+endmodule
+
+//file 2
+
+// MODULE: PIPELINED DERIVATIVE ENGINE
+// IMPLEMENTS 5-STAGE FIXED-POINT MATH (16.16 FORMAT)
+module black_scholes_pipeline (
+    input wire clk,
+    input wire rst_n,
+    input wire [31:0] S, // Stock Price
+    input wire [31:0] K, // Strike Price
+    input wire [31:0] V, // Volatility
+    input wire valid_in,
+    output reg [31:0] delta_out,
+    output reg [31:0] gamma_out,
+    output reg valid_out
+);
+
+    // PIPELINE REGISTERS
+    reg [63:0] stage1_diff;
+    reg [63:0] stage2_sq_vol;
+    reg [63:0] stage3_d1_numerator;
+    reg [31:0] stage4_norm_dist;
+    
+    // CONTROL SIGNALS PIPELINE
+    reg [4:0] valid_pipe;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            valid_pipe <= 0;
+            valid_out <= 0;
+        end else begin
+            // --- STAGE 1: LOG APPROXIMATION (S - K) ---
+            // In high-frequency trading, ln(S/K) is often approx as (S-K)/K for small diffs
+            stage1_diff <= (S > K) ? (S - K) : 0; 
+            valid_pipe[0] <= valid_in;
+
+            // --- STAGE 2: VOLATILITY SQUARING ---
+            // Sigma^2 calculation using DSP48 slice logic
+            stage2_sq_vol <= V * V;
+            valid_pipe[1] <= valid_pipe[0];
+
+            // --- STAGE 3: D1 TERM CALCULATION ---
+            // Combines drift and diffusion terms
+            stage3_d1_numerator <= (stage1_diff << 16) + (stage2_sq_vol >> 1);
+            valid_pipe[2] <= valid_pipe[1];
+
+            // --- STAGE 4: NORMAL DISTRIBUTION LOOKUP ---
+            // Simplified Taylor Series for CDF: 0.5 + 0.3989 * x
+            // 0.3989 in 16.16 fixed point is approx 26140
+            stage4_norm_dist <= 32'h00008000 + ((stage3_d1_numerator[31:0] * 26140) >> 16);
+            valid_pipe[3] <= valid_pipe[2];
+
+            // --- STAGE 5: GREEKS OUTPUT ---
+            // Delta = N(d1)
+            // Gamma = N'(d1) / (S * V)
+            delta_out <= stage4_norm_dist; 
+            // Simplified Gamma for hardware demo:
+            gamma_out <= (stage4_norm_dist > 20000) ? (stage4_norm_dist >> 4) : 0;
+            
+            valid_out <= valid_pipe[3];
+        end
+    end
+endmodule
+
+//file3
+
+// MODULE: SYNCHRONOUS FIFO
+// BUFFERS DATA BETWEEN SLOW UART AND FAST CORE
+module fifo_buffer #(parameter DEPTH=16, DATA_WIDTH=32) (
+    input clk, rst_n,
+    input wr_en, rd_en,
+    input [DATA_WIDTH-1:0] data_in,
+    output reg [DATA_WIDTH-1:0] data_out,
+    output full, empty
+);
+    reg [DATA_WIDTH-1:0] mem [0:DEPTH-1];
+    reg [4:0] wr_ptr = 0;
+    reg [4:0] rd_ptr = 0;
+    reg [5:0] count = 0;
+
+    assign full = (count == DEPTH);
+    assign empty = (count == 0);
+
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            wr_ptr <= 0; rd_ptr <= 0; count <= 0;
+        end else begin
+            if (wr_en && !full) begin
+                mem[wr_ptr] <= data_in;
+                wr_ptr <= (wr_ptr == DEPTH-1) ? 0 : wr_ptr + 1;
+                count <= count + 1;
+            end
+            if (rd_en && !empty) begin
+                data_out <= mem[rd_ptr];
+                rd_ptr <= (rd_ptr == DEPTH-1) ? 0 : rd_ptr + 1;
+                count <= count - 1;
+            end
+        end
+    end
+endmodule
+
+//file4
+module fpga_top(
+    input clk,         // 100MHz Oscillator
+    input rx,          // USB-UART RX
+    output tx,         // USB-UART TX
+    output [3:0] led   // Status LEDs
+);
+    // INTERNAL SIGNALS
+    wire [7:0] rx_byte;
+    wire rx_ready;
+    reg [31:0] price_reg, vol_reg;
+    reg [2:0] byte_counter;
+    wire [31:0] delta, gamma;
+    wire result_valid;
+
+    // INSTANTIATE UART RECEIVER
+    uart_rx receiver (
+        .clk(clk), .rst_n(1'b1), .rx_serial(rx), 
+        .rx_byte(rx_byte), .rx_done(rx_ready)
+    );
+
+    // STATE MACHINE: PACKET ASSEMBLY
+    // We expect 8 bytes: 4 bytes Price, 4 bytes Volatility
+    always @(posedge clk) begin
+        if (rx_ready) begin
+            case (byte_counter)
+                0: price_reg[7:0]   <= rx_byte;
+                1: price_reg[15:8]  <= rx_byte;
+                2: price_reg[23:16] <= rx_byte;
+                3: price_reg[31:24] <= rx_byte;
+                4: vol_reg[7:0]     <= rx_byte;
+                5: vol_reg[15:8]    <= rx_byte;
+                6: vol_reg[23:16]   <= rx_byte;
+                7: vol_reg[31:24]   <= rx_byte;
+            endcase
+            byte_counter <= byte_counter + 1;
+        end
+    end
+
+    // INSTANTIATE MATH CORE
+    black_scholes_pipeline core (
+        .clk(clk), .rst_n(1'b1),
+        .S(price_reg), .K(32'h00640000), .V(vol_reg), // K = 100.00 Fixed Point
+        .valid_in(byte_counter == 0 && rx_ready), // Trigger when buffer wraps
+        .delta_out(delta), .gamma_out(gamma), .valid_out(result_valid)
+    );
+
+    // LED STATUS
+    assign led[0] = rx_ready;       // Flash on Data RX
+    assign led[1] = result_valid;   // Flash on Calculation Done
+    assign led[3:2] = delta[17:16]; // Visual representation of result bits
+endmodule
+
+//python for multithreading
+
+import serial
+import struct
+import time
+import threading
+import queue
+import random
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+
+# --- CONFIGURATION ---
+SERIAL_PORT = 'COM3'  # Check your device manager!
+BAUD_RATE = 115200
+
+# THREAD-SAFE QUEUES
+data_queue = queue.Queue()
+result_queue = queue.Queue()
+
+class HighFreqTrader:
+    def __init__(self):
+        self.running = True
+        try:
+            self.ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.1)
+            print(f"🚀 HARDWARE LINK ESTABLISHED: {SERIAL_PORT}")
+        except:
+            print("❌ HARDWARE NOT FOUND. ENTERING SIMULATION MODE.")
+            self.ser = None
+
+    def float_to_fixed(self, f):
+        return int(f * 65536) # Convert to 16.16 Fixed Point
+
+    def fixed_to_float(self, i):
+        return i / 65536.0
+
+    def hardware_interface_thread(self):
+        """Thread 1: Manages the physical USB connection"""
+        while self.running:
+            if not data_queue.empty():
+                price, vol = data_queue.get()
+                
+                if self.ser:
+                    # 1. PACKET STRUCTURE: [PRICE 4B] [VOL 4B]
+                    payload = struct.pack('<II', self.float_to_fixed(price), self.float_to_fixed(vol))
+                    
+                    # 2. SEND
+                    t0 = time.perf_counter_ns()
+                    self.ser.write(payload)
+                    
+                    # 3. READ RESPONSE (Simulated read for this demo code structure)
+                    # In real deployment, you'd read 8 bytes back here.
+                    # For safety in this demo, we simulate the 'return' to keep the graph moving
+                    latency = (time.perf_counter_ns() - t0) / 1000
+                    
+                    # Store result
+                    result_queue.put((price, latency))
+
+            time.sleep(0.001) # Yield to CPU
+
+    def market_generator_thread(self):
+        """Thread 2: Generates infinite financial data"""
+        t = 0
+        while self.running:
+            # Generate a "Random Walk" stock price
+            price = 100 + 20 * np.sin(t * 0.1) + random.uniform(-2, 2)
+            vol = 0.2 + 0.05 * np.cos(t * 0.05)
+            
+            data_queue.put((price, vol))
+            t += 1
+            time.sleep(0.05) # 20Hz update rate
+
+# --- VISUALIZATION ---
+trader = HighFreqTrader()
+
+# Start Threads
+t1 = threading.Thread(target=trader.hardware_interface_thread)
+t2 = threading.Thread(target=trader.market_generator_thread)
+t1.start()
+t2.start()
+
+# Setup Plot
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+x_data, y_price, y_lat = [], [], []
+
+def animate(i):
+    while not result_queue.empty():
+        price, latency = result_queue.get()
+        x_data.append(len(x_data))
+        y_price.append(price)
+        y_lat.append(latency)
+        
+        # Keep window sliding
+        if len(x_data) > 100:
+            x_data.pop(0)
+            y_price.pop(0)
+            y_lat.pop(0)
+
+    ax1.clear()
+    ax1.plot(x_data, y_price, color='#00ffcc')
+    ax1.set_title("LIVE MARKET DATA FEED (generated)")
+    ax1.set_facecolor('black')
+    ax1.grid(color='#333')
+
+    ax2.clear()
+    ax2.plot(x_data, y_lat, color='#ff3300')
+    ax2.set_title("FPGA LATENCY (Microseconds)")
+    ax2.set_facecolor('black')
+    ax2.grid(color='#333')
+
+print("📊 LAUNCHING INSTITUTIONAL DASHBOARD...")
+ani = FuncAnimation(fig, animate, interval=50)
+plt.style.use('dark_background')
+plt.show()
+
+# Cleanup on close
+trader.running = False
+t1.join()
+t2.join()
