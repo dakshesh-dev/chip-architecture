@@ -3,533 +3,712 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Architecture Schematic | Financial Accelerator</title>
+    <title>Enterprise FPGA vs CPU Architecture Simulator</title>
     <style>
         :root {
-            --bg-color: #0b0f19;
-            --panel-bg: #111625;
-            --border-color: #2d3b4f;
-            --accent-fpga: #00f2ea; /* Cyan for high tech */
-            --accent-fpga-dim: rgba(0, 242, 234, 0.1);
-            --accent-cpu: #ff3366; /* Hot pink/Red for heat/slow */
-            --accent-cpu-dim: rgba(255, 51, 102, 0.1);
-            --text-main: #e0e6ed;
-            --text-muted: #94a3b8;
-            --bus-color: #3b82f6;
+            --bg-color: #0b0c10;
+            --panel-bg: #1f2833;
+            --accent-cyan: #66fcf1;
+            --accent-dim: #45a29e;
+            --text-main: #c5c6c7;
+            --alert-red: #ff3b3b;
+            --safe-green: #2ecc71;
+            --grid-line: rgba(102, 252, 241, 0.05);
         }
 
-        * { box-sizing: border-box; }
-
-        body {
+        body, html {
             margin: 0;
             padding: 0;
-            font-family: 'Courier New', Courier, monospace; /* Monospace for engineering look */
             background-color: var(--bg-color);
             color: var(--text-main);
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
+            font-family: 'Roboto Mono', 'Courier New', monospace;
             overflow: hidden;
+            height: 100vh;
+            width: 100vw;
         }
 
-        /* --- CONTROL BAR --- */
-        nav {
-            height: 60px;
-            background: var(--panel-bg);
-            border-bottom: 1px solid var(--border-color);
+        /* --- UI OVERLAYS --- */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Let clicks pass through to canvas */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .top-bar {
+            background: rgba(31, 40, 51, 0.95);
+            border-bottom: 1px solid var(--accent-dim);
+            padding: 15px 25px;
+            pointer-events: auto;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0 20px;
-            z-index: 100;
+            backdrop-filter: blur(5px);
         }
 
-        .brand {
-            font-weight: bold;
+        h1 {
+            margin: 0;
+            font-size: 1.2rem;
             letter-spacing: 1px;
-            font-size: 1.1rem;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+        }
+
+        .controls {
             display: flex;
-            align-items: center;
-            gap: 10px;
+            gap: 15px;
         }
 
-        .status-light {
-            width: 8px;
-            height: 8px;
-            background: #00f2ea;
-            border-radius: 50%;
-            box-shadow: 0 0 10px #00f2ea;
-        }
-
-        .switch-container {
-            display: flex;
-            background: #000;
-            border-radius: 20px;
-            border: 1px solid var(--border-color);
-            padding: 2px;
-        }
-
-        .switch-btn {
+        button {
             background: transparent;
-            border: none;
-            color: var(--text-muted);
+            border: 1px solid var(--accent-dim);
+            color: var(--accent-cyan);
             padding: 8px 16px;
-            border-radius: 18px;
             font-family: inherit;
-            font-size: 0.8rem;
             font-weight: bold;
             cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .switch-btn.active-fpga {
-            background: var(--accent-fpga);
-            color: #000;
-            box-shadow: 0 0 15px var(--accent-fpga-dim);
-        }
-
-        .switch-btn.active-cpu {
-            background: var(--accent-cpu);
-            color: #fff;
-            box-shadow: 0 0 15px var(--accent-cpu-dim);
-        }
-
-        /* --- MAIN SCHEMATIC AREA --- */
-        main {
-            flex: 1;
-            position: relative;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background-image: 
-                linear-gradient(rgba(45, 59, 79, 0.2) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(45, 59, 79, 0.2) 1px, transparent 1px);
-            background-size: 40px 40px;
-            padding: 20px;
-        }
-
-        .schematic-board {
-            position: relative;
-            width: 90%;
-            max-width: 1000px;
-            aspect-ratio: 16/9;
-            border: 2px solid var(--border-color);
-            background: rgba(11, 15, 25, 0.9);
-            border-radius: 8px;
-            box-shadow: 0 0 50px rgba(0,0,0,0.5);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        /* --- FPGA ARCHITECTURE (Grid View) --- */
-        .arch-layer {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            display: none; /* Toggled by JS */
-            padding: 20px;
-        }
-
-        /* Sections of the FPGA */
-        .fpga-grid {
-            display: grid;
-            grid-template-columns: 150px 1fr 150px; /* I/O | Logic | Memory */
-            gap: 20px;
-            height: 100%;
-        }
-
-        .section-col {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            justify-content: center;
-        }
-
-        .component {
-            border: 1px solid var(--border-color);
-            background: rgba(255,255,255,0.02);
-            padding: 10px;
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            position: relative;
-            text-align: center;
-        }
-
-        .component::before {
-            content: attr(data-label);
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-            color: var(--accent-fpga);
+            transition: all 0.2s;
             text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        /* The Tensor Core Grid */
-        .tensor-core-matrix {
-            display: grid;
-            grid-template-columns: repeat(8, 1fr);
-            grid-template-rows: repeat(8, 1fr);
-            gap: 4px;
-            height: 100%;
-            border: 1px dashed var(--border-color);
-            padding: 5px;
-        }
-
-        .dsp-unit {
-            background: rgba(0, 242, 234, 0.05);
-            border: 1px solid rgba(0, 242, 234, 0.2);
-            position: relative;
-        }
-
-        .dsp-unit.active {
-            background: #00f2ea;
-            box-shadow: 0 0 10px #00f2ea;
-            transition: background 0.05s;
-        }
-
-        /* --- CPU ARCHITECTURE (Serial View) --- */
-        .cpu-layout {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: space-between;
-            height: 100%;
-            padding: 40px;
-        }
-
-        .dram-bank {
-            width: 80%;
-            height: 60px;
-            border: 2px solid var(--text-muted);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--text-muted);
-            font-weight: bold;
-        }
-
-        .bus-lines {
-            width: 4px;
-            flex: 1;
-            background: var(--border-color);
-            position: relative;
-        }
-
-        .cpu-die {
-            width: 60%;
-            height: 200px;
-            border: 2px solid var(--accent-cpu);
-            background: rgba(255, 51, 102, 0.05);
-            display: flex;
-            flex-wrap: wrap;
-            padding: 10px;
-            gap: 10px;
-            justify-content: center;
-            position: relative;
-        }
-
-        .alu-core {
-            width: 45%;
-            height: 45%;
-            border: 1px solid var(--accent-cpu);
-            display: flex;
-            align-items: center;
-            justify-content: center;
             font-size: 0.8rem;
-            color: var(--accent-cpu);
         }
 
-        .cache-layer {
-            width: 95%;
-            height: 30px;
-            background: #2d3b4f;
-            margin-top: auto;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.7rem;
-            color: #fff;
+        button:hover {
+            background: rgba(102, 252, 241, 0.1);
+            box-shadow: 0 0 10px var(--accent-dim);
         }
 
-        /* --- DATA FLOW ANIMATIONS --- */
-        .stream-particle {
-            position: absolute;
-            background: #fff;
-            border-radius: 50%;
-            pointer-events: none;
-            z-index: 50;
+        button.active {
+            background: var(--accent-cyan);
+            color: #000;
         }
 
-        /* FPGA: High Speed Flow */
-        .fpga-particle {
-            width: 20px; /* Longer streak */
-            height: 2px;
-            background: linear-gradient(90deg, transparent, #00f2ea);
-            box-shadow: 0 0 5px #00f2ea;
+        button.crime-btn {
+            border-color: var(--alert-red);
+            color: var(--alert-red);
         }
 
-        /* CPU: Data Packet */
-        .cpu-particle {
-            width: 8px;
-            height: 8px;
-            background: #ff3366;
-            border-radius: 2px;
+        button.crime-btn:hover {
+            background: rgba(255, 59, 59, 0.1);
+            box-shadow: 0 0 15px var(--alert-red);
         }
 
-        /* --- DASHBOARD OVERLAY --- */
-        .telemetry {
+        /* --- INSPECTOR PANEL (Bottom Left) --- */
+        .inspector {
             position: absolute;
             bottom: 20px;
             left: 20px;
-            right: 20px;
-            background: rgba(11, 15, 25, 0.95);
-            border: 1px solid var(--border-color);
-            backdrop-filter: blur(10px);
+            width: 350px;
+            background: rgba(11, 12, 16, 0.95);
+            border: 1px solid var(--accent-dim);
             padding: 15px;
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            border-radius: 8px;
+            pointer-events: auto;
+            border-radius: 4px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            font-size: 0.85rem;
+            transform: translateY(0);
+            transition: transform 0.3s ease;
         }
 
-        .metric h3 {
-            margin: 0;
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
+        .inspector.hidden {
+            transform: translateY(150%);
         }
 
-        .metric p {
-            margin: 5px 0 0 0;
-            font-size: 1.2rem;
+        .inspector h3 {
+            margin: 0 0 10px 0;
+            color: #fff;
+            border-bottom: 1px solid var(--accent-dim);
+            padding-bottom: 5px;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        .data-label { color: var(--text-main); opacity: 0.7; }
+        .data-val { color: var(--accent-cyan); font-weight: bold; }
+        .data-val.alert { color: var(--alert-red); }
+
+        /* --- STATS PANEL (Top Right) --- */
+        .stats-panel {
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            width: 200px;
+            background: rgba(11, 12, 16, 0.8);
+            border-right: 2px solid var(--accent-cyan);
+            padding: 15px;
+            pointer-events: none;
+            text-align: right;
+        }
+
+        .stat-big {
+            font-size: 1.8rem;
+            color: var(--accent-cyan);
             font-weight: bold;
-            font-family: 'Courier New', monospace;
+        }
+        
+        .stat-sub { font-size: 0.7rem; opacity: 0.8; margin-bottom: 10px; }
+
+        /* --- CANVAS --- */
+        canvas {
+            display: block;
+            cursor: crosshair;
         }
 
-        /* --- iPad Responsive Tweaks --- */
-        @media (orientation: portrait) {
-            .schematic-board { aspect-ratio: auto; height: 60vh; width: 95%; }
-            .fpga-grid { grid-template-columns: 1fr; grid-template-rows: 80px 1fr 80px; }
-            .section-col { flex-direction: row; }
-            .telemetry { grid-template-columns: 1fr 1fr; }
+        /* --- LOADING SCREEN --- */
+        #loader {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            color: var(--accent-cyan);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.5s;
         }
     </style>
 </head>
 <body>
 
-    <nav>
-        <div class="brand">
-            <div class="status-light"></div>
-            ARCH.VIEWER v2.0
-        </div>
-        <div class="switch-container">
-            <button class="switch-btn active-fpga" onclick="toggleArch('fpga')">FPGA (PARALLEL)</button>
-            <button class="switch-btn" onclick="toggleArch('cpu')">CPU (SERIAL)</button>
-        </div>
-    </nav>
+    <div id="loader">INITIALIZING HARDWARE SCHEMATICS...</div>
 
-    <main>
-        <div class="schematic-board" id="board">
-            
-            <div class="arch-layer" id="fpga-view" style="display: block;">
-                <div class="fpga-grid">
-                    <div class="section-col">
-                        <div class="component" data-label="PCIe Gen3 x4">Input Buffer</div>
-                        <div class="component" data-label="AXI Stream">DMA Engine</div>
-                    </div>
-                    
-                    <div class="component" data-label="8x8 Tensor Processing Grid" style="display: flex; flex-direction: column;">
-                        <div class="tensor-core-matrix" id="tensorGrid">
-                            </div>
-                    </div>
-
-                    <div class="section-col">
-                        <div class="component" data-label="BRAM Cache">4.8Mb On-Chip</div>
-                        <div class="component" data-label="DDR3 Controller">Write Back</div>
-                    </div>
-                </div>
+    <div id="ui-layer">
+        <div class="top-bar">
+            <div>
+                <h1>Architecture Simulator v4.0</h1>
+                <span style="font-size: 0.7rem; color: #888;">SCROLL TO ZOOM • DRAG TO PAN • CLICK NODES TO INSPECT</span>
             </div>
-
-            <div class="arch-layer" id="cpu-view">
-                <div class="cpu-layout">
-                    <div class="dram-bank">SYSTEM DRAM (SLOW)</div>
-                    <div class="bus-lines" id="cpuBus"></div>
-                    <div class="cpu-die">
-                        <div style="width:100%; text-align:center; color:#ff3366; font-size:0.8rem; margin-bottom:5px;">i9 / THREADRIPPER DIE</div>
-                        <div class="alu-core">CORE 0</div>
-                        <div class="alu-core">CORE 1</div>
-                        <div class="alu-core">CORE 2</div>
-                        <div class="alu-core">CORE 3</div>
-                        <div class="cache-layer">SHARED L3 CACHE (BOTTLENECK)</div>
-                    </div>
-                </div>
+            <div class="controls">
+                <button id="btn-fpga" class="active" onclick="switchArch('FPGA')">FPGA (Parallel)</button>
+                <button id="btn-cpu" onclick="switchArch('CPU')">CPU (Serial)</button>
+                <div style="width: 1px; background: #444; margin: 0 10px;"></div>
+                <button class="crime-btn" onmousedown="triggerAttack()" onmouseup="endAttack()">⚠️ SIMULATE SPOOFING ATTACK</button>
             </div>
-
-            <div class="telemetry">
-                <div class="metric">
-                    <h3>Current Throughput</h3>
-                    <p id="tps-display" style="color: #00f2ea;">83,210 TPS</p>
-                </div>
-                <div class="metric">
-                    <h3>Latency</h3>
-                    <p id="latency-display">12.1 µs</p>
-                </div>
-                <div class="metric">
-                    <h3>Architecture Efficiency</h3>
-                    <p id="eff-display">99.8%</p>
-                </div>
-            </div>
-
         </div>
-    </main>
 
-    <script>
-        const tensorGrid = document.getElementById('tensorGrid');
-        const fpgaView = document.getElementById('fpga-view');
-        const cpuView = document.getElementById('cpu-view');
-        
-        const tpsDisplay = document.getElementById('tps-display');
-        const latDisplay = document.getElementById('latency-display');
-        const effDisplay = document.getElementById('eff-display');
-        const board = document.getElementById('board');
+        <div class="stats-panel">
+            <div id="tps-display" class="stat-big">0</div>
+            <div class="stat-sub">TRANSACTIONS / SEC</div>
+            <div id="lat-display" class="stat-big">0 µs</div>
+            <div class="stat-sub">LATENCY</div>
+            <div id="dropped-display" class="stat-big" style="color:var(--alert-red)">0</div>
+            <div class="stat-sub">THREATS BLOCKED</div>
+        </div>
 
-        let activeMode = 'fpga';
-        
-        // 1. GENERATE FPGA CORES
-        const cores = [];
-        for(let i=0; i<64; i++) {
-            const dsp = document.createElement('div');
-            dsp.className = 'dsp-unit';
-            tensorGrid.appendChild(dsp);
-            cores.push(dsp);
+        <div id="inspector" class="inspector hidden">
+            <h3 id="ins-title">NODE INSPECTOR</h3>
+            <div class="data-row"><span>Type:</span> <span id="ins-type" class="data-val">DSP Unit</span></div>
+            <div class="data-row"><span>Status:</span> <span id="ins-status" class="data-val">IDLE</span></div>
+            <div class="data-row"><span>Current Op:</span> <span id="ins-op" class="data-val">--</span></div>
+            <div class="data-row"><span>Input A (Price):</span> <span id="ins-in-a" class="data-val">--</span></div>
+            <div class="data-row"><span>Input B (Vol):</span> <span id="ins-in-b" class="data-val">--</span></div>
+            <div class="data-row"><span>Output (Risk):</span> <span id="ins-out" class="data-val">--</span></div>
+        </div>
+    </div>
+
+    <canvas id="simCanvas"></canvas>
+
+<script>
+/**
+ * ENTERPRISE ARCHITECTURE SIMULATION ENGINE
+ * Author: Gemini Advanced
+ * Description: High-fidelity canvas simulation of FPGA vs CPU data flows.
+ */
+
+// --- CONFIGURATION ---
+const CONFIG = {
+    fpga: {
+        clockSpeed: 1.5, // Visual speed multiplier
+        spawnRate: 2,    // Packets per frame
+        gridSize: 8,     // 8x8 DSP Array
+        packetColor: '#66fcf1',
+        badPacketColor: '#ff3b3b'
+    },
+    cpu: {
+        clockSpeed: 0.3, // Much slower
+        spawnRate: 0.5,  // Serial bottleneck
+        coreCount: 4,
+        packetColor: '#ffa500', // Orange for CPU
+        badPacketColor: '#ff3b3b'
+    }
+};
+
+// --- STATE MANAGEMENT ---
+const state = {
+    mode: 'FPGA', // 'FPGA' or 'CPU'
+    isAttack: false,
+    tps: 0,
+    latency: 0,
+    blocked: 0,
+    zoom: 1,
+    offsetX: 0,
+    offsetY: 0,
+    selectedNode: null,
+    dragStart: { x: 0, y: 0 },
+    isDragging: false,
+    packets: [],
+    nodes: [],
+    links: [],
+    lastFrameTime: 0
+};
+
+// --- DOM ELEMENTS ---
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d', { alpha: false }); // Optimize
+const inspector = document.getElementById('inspector');
+
+// --- RESIZE HANDLER ---
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- CLASSES ---
+
+class Packet {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.targetNode = null;
+        this.progress = 0;
+        this.speed = state.mode === 'FPGA' ? 0.05 : 0.02; // Base speed
+        this.type = type; // 'normal' or 'attack'
+        this.payload = {
+            price: (Math.random() * 100 + 100).toFixed(2),
+            volatility: type === 'attack' ? (Math.random() * 0.5 + 0.5).toFixed(2) : (Math.random() * 0.2).toFixed(2),
+            id: Math.floor(Math.random() * 999999).toString(16)
+        };
+        this.color = type === 'attack' ? CONFIG.fpga.badPacketColor : (state.mode === 'FPGA' ? CONFIG.fpga.packetColor : CONFIG.cpu.packetColor);
+        this.dead = false;
+        this.pathIndex = 0;
+        this.path = []; // Array of Nodes
+    }
+
+    update() {
+        if (this.dead) return;
+
+        // Lag Simulation for CPU during attack
+        let currentSpeed = this.speed;
+        if (state.mode === 'CPU' && state.isAttack) {
+            currentSpeed *= 0.2; // Massive lag penalty
         }
 
-        // 2. ANIMATION LOOP
-        function animate() {
-            if(activeMode === 'fpga') {
-                runFpgaSimulation();
+        if (!this.targetNode) {
+            // Find next node in path
+            if (this.pathIndex < this.path.length) {
+                this.targetNode = this.path[this.pathIndex];
+                this.pathIndex++;
             } else {
-                runCpuSimulation();
+                this.dead = true; // Reached end
+                if (state.mode === 'FPGA') state.tps += 1;
+                else state.tps += 0.1; // Slower tps accumulation
+                return;
             }
-            requestAnimationFrame(animate);
         }
 
-        // FPGA LOGIC: Massive Parallelism
-        function runFpgaSimulation() {
-            // Randomly flash cores to show calculation
-            cores.forEach(core => {
-                if(Math.random() > 0.7) {
-                    core.classList.add('active');
-                    setTimeout(() => core.classList.remove('active'), 50);
+        // Move towards target
+        const dx = this.targetNode.x - this.x;
+        const dy = this.targetNode.y - this.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+
+        if (dist < 5) {
+            // Arrived at node
+            this.targetNode.process(this);
+            this.x = this.targetNode.x;
+            this.y = this.targetNode.y;
+            this.targetNode = null; // Look for next
+        } else {
+            this.x += (dx / dist) * currentSpeed * (dist > 50 ? 20 : 5); // Accelerate on long wires
+        }
+    }
+
+    draw(ctx) {
+        if (this.dead) return;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 4 / state.zoom, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Glow effect
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = this.color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+}
+
+class Node {
+    constructor(id, label, type, x, y, width, height) {
+        this.id = id;
+        this.label = label;
+        this.type = type; // 'io', 'logic', 'memory', 'security'
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.connections = []; // IDs of connected nodes
+        this.processingData = null; // Current packet info
+        this.flashTimer = 0;
+        this.isCongested = false;
+    }
+
+    process(packet) {
+        this.flashTimer = 10;
+        this.processingData = packet.payload;
+
+        // LOGIC: Security Check
+        if (this.type === 'security') {
+            if (packet.type === 'attack') {
+                if (state.mode === 'FPGA') {
+                    // FPGA catches it instantly
+                    packet.dead = true;
+                    state.blocked++;
+                    this.flashColor = '#ff3b3b';
+                } else {
+                    // CPU struggles, maybe lets it through
+                    if (Math.random() > 0.8) {
+                         packet.dead = true; // Occasional block
+                         state.blocked++;
+                    } else {
+                        // Packet survives (Fraud success)
+                        this.flashColor = '#ffff00'; // Warning yellow
+                    }
+                    this.isCongested = true; // CPU Node clogs up
                 }
-            });
-
-            // Create HIGH VOLUME data streams
-            if(Math.random() > 0.2) { // Frequent generation
-                createParticle('fpga');
-            }
-
-            // Update Stats to look stable and high
-            tpsDisplay.innerText = (83000 + Math.floor(Math.random() * 500)).toLocaleString() + " TPS";
-            tpsDisplay.style.color = "#00f2ea";
-            latDisplay.innerText = (12.1 + (Math.random() * 0.1)).toFixed(2) + " µs";
-            effDisplay.innerText = "99.8%";
-        }
-
-        // CPU LOGIC: Serial Bottleneck
-        let cpuFrame = 0;
-        function runCpuSimulation() {
-            cpuFrame++;
-            
-            // Only create particle rarely (Low throughput)
-            if(cpuFrame % 40 === 0) {
-                createParticle('cpu');
-            }
-
-            // Fluctuate stats wildly
-            tpsDisplay.innerText = (2000 + Math.floor(Math.random() * 300)).toLocaleString() + " TPS";
-            tpsDisplay.style.color = "#ff3366";
-            latDisplay.innerText = (400 + Math.floor(Math.random() * 100)).toFixed(1) + " µs";
-            effDisplay.innerText = "42.5%";
-        }
-
-        // PARTICLE SYSTEM
-        function createParticle(type) {
-            const p = document.createElement('div');
-            p.className = 'stream-particle';
-            
-            const rect = board.getBoundingClientRect();
-
-            if(type === 'fpga') {
-                // FPGA: Stream from left to right, multiple distinct "lanes"
-                p.classList.add('fpga-particle');
-                // Pick a random row (0-7) to simulate the 8 rows of the grid
-                const row = Math.floor(Math.random() * 8); 
-                // Calculate vertical position based on grid layout approximation
-                const rowHeight = rect.height / 10; 
-                
-                p.style.left = '10px';
-                p.style.top = (rect.height * 0.25) + (Math.random() * (rect.height * 0.5)) + 'px';
-                
-                // Animate
-                const speed = 1000 + Math.random() * 500; // Fast (1s)
-                p.animate([
-                    { transform: 'translateX(0)', opacity: 1 },
-                    { transform: `translateX(${rect.width}px)`, opacity: 0 }
-                ], {
-                    duration: speed,
-                    easing: 'linear'
-                }).onfinish = () => p.remove();
-
             } else {
-                // CPU: Move Down, Stop (Cache Miss), Move Back Up
-                p.classList.add('cpu-particle');
-                p.style.left = '50%';
-                p.style.top = '10px';
-
-                // Complex Keyframe for bottleneck
-                p.animate([
-                    { top: '10px', opacity: 1 },
-                    { top: '60%', opacity: 1, offset: 0.4 }, // Hit Cache
-                    { top: '60%', backgroundColor: '#fff', offset: 0.5 }, // Wait (Stall)
-                    { top: '60%', backgroundColor: '#ff3366', offset: 0.6 },
-                    { top: '20%', opacity: 0, offset: 1 } // Return to memory
-                ], {
-                    duration: 2500, // Slow (2.5s)
-                    easing: 'ease-in-out'
-                }).onfinish = () => p.remove();
+                this.flashColor = '#2ecc71';
             }
+        } else if (this.type === 'logic') {
+            this.flashColor = state.mode === 'FPGA' ? '#66fcf1' : '#ffa500';
+        }
+    }
 
-            board.appendChild(p);
+    draw(ctx) {
+        const w = this.width;
+        const h = this.height;
+
+        // Base
+        ctx.fillStyle = this.type === 'security' ? 'rgba(40, 50, 60, 0.9)' : 'rgba(20, 25, 30, 0.9)';
+        if (this.isCongested) ctx.fillStyle = 'rgba(100, 20, 20, 0.8)';
+        
+        ctx.strokeStyle = this.flashTimer > 0 ? this.flashColor : '#45a29e';
+        ctx.lineWidth = this.flashTimer > 0 ? 2 : 1;
+
+        ctx.fillRect(this.x - w/2, this.y - h/2, w, h);
+        ctx.strokeRect(this.x - w/2, this.y - h/2, w, h);
+
+        // Label
+        ctx.fillStyle = '#fff';
+        ctx.font = `${10 / state.zoom}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.fillText(this.label, this.x, this.y + 4);
+
+        // Details (if zoomed in)
+        if (state.zoom > 1.5 && this.type === 'logic') {
+            ctx.font = `${6 / state.zoom}px monospace`;
+            ctx.fillStyle = '#888';
+            ctx.fillText("DSP48E1", this.x, this.y + 15);
         }
 
-        function toggleArch(mode) {
-            activeMode = mode;
-            const btns = document.querySelectorAll('.switch-btn');
+        if (this.flashTimer > 0) this.flashTimer--;
+        if (this.isCongested && !state.isAttack) this.isCongested = false;
+    }
+}
+
+// --- BUILD ARCHITECTURES ---
+
+function buildFPGA() {
+    state.nodes = [];
+    state.links = [];
+    
+    // 1. Inputs
+    state.nodes.push(new Node('pcie', 'PCIe Gen4', 'io', -400, 0, 80, 40));
+    state.nodes.push(new Node('dma', 'DMA Engine', 'io', -300, 0, 60, 40));
+    state.nodes.push(new Node('hbm', 'HBM Controller', 'memory', -200, 0, 80, 200));
+
+    // 2. Systolic Array (The Grid)
+    const startX = -100;
+    const startY = -150;
+    const gap = 50;
+    const cols = 8;
+    const rows = 8;
+    const gridNodes = [];
+
+    for(let r=0; r<rows; r++) {
+        for(let c=0; c<cols; c++) {
+            let id = `dsp_${r}_${c}`;
+            let n = new Node(id, `DSP ${r},${c}`, 'logic', startX + (c*gap), startY + (r*gap), 30, 30);
+            state.nodes.push(n);
+            gridNodes.push(n);
+        }
+    }
+
+    // 3. Security Block (Post-Processing)
+    state.nodes.push(new Node('sec', 'RTL SECURITY', 'security', 350, 0, 100, 300));
+    
+    // 4. Output
+    state.nodes.push(new Node('out', 'ETH Output', 'io', 500, 0, 80, 40));
+
+    // --- DEFINE PATHS ---
+    // Instead of simple links, we define the Packet "Paths" dynamically
+    // Packets spawn at PCIe -> DMA -> HBM -> [Random DSP Row] -> Security -> Output
+}
+
+function buildCPU() {
+    state.nodes = [];
+    state.links = [];
+
+    // 1. Memory
+    state.nodes.push(new Node('ram', 'DDR4 RAM', 'memory', -400, 0, 80, 300));
+
+    // 2. Bus
+    state.nodes.push(new Node('bus', 'Ring Bus', 'io', -200, 0, 20, 400));
+
+    // 3. Cache
+    state.nodes.push(new Node('l3', 'L3 Cache', 'memory', -100, 0, 100, 400));
+
+    // 4. Cores (Serial)
+    for(let i=0; i<4; i++) {
+        state.nodes.push(new Node(`core_${i}`, `Core i${i}`, 'logic', 100, -150 + (i*100), 120, 80));
+        // L1 Cache inside core
+        state.nodes.push(new Node(`l1_${i}`, `L1`, 'memory', 100, -170 + (i*100), 40, 20));
+    }
+
+    // 5. Output
+    state.nodes.push(new Node('wb', 'Write Back', 'io', 300, 0, 80, 400));
+}
+
+// --- INTERACTION ---
+
+// Mouse Events
+canvas.addEventListener('mousedown', e => {
+    state.isDragging = true;
+    state.dragStart = { x: e.clientX, y: e.clientY };
+    
+    // Check click on node
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left - canvas.width/2 - state.offsetX) / state.zoom;
+    const my = (e.clientY - rect.top - canvas.height/2 - state.offsetY) / state.zoom;
+
+    state.selectedNode = null;
+    inspector.classList.add('hidden');
+
+    state.nodes.forEach(n => {
+        if (mx > n.x - n.width/2 && mx < n.x + n.width/2 &&
+            my > n.y - n.height/2 && my < n.y + n.height/2) {
+            state.selectedNode = n;
+            updateInspector(n);
+        }
+    });
+});
+
+canvas.addEventListener('mousemove', e => {
+    if (state.isDragging) {
+        state.offsetX += e.clientX - state.dragStart.x;
+        state.offsetY += e.clientY - state.dragStart.y;
+        state.dragStart = { x: e.clientX, y: e.clientY };
+    }
+});
+
+canvas.addEventListener('mouseup', () => state.isDragging = false);
+canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const zoomIntensity = 0.1;
+    const wheel = e.deltaY < 0 ? 1 : -1;
+    const zoom = Math.exp(wheel * zoomIntensity);
+    
+    // Clamping
+    if (state.zoom * zoom > 0.5 && state.zoom * zoom < 5) {
+        state.zoom *= zoom;
+    }
+});
+
+function updateInspector(node) {
+    inspector.classList.remove('hidden');
+    document.getElementById('ins-title').innerText = node.label;
+    document.getElementById('ins-type').innerText = node.type.toUpperCase();
+    document.getElementById('ins-status').innerText = node.flashTimer > 0 ? "PROCESSING" : "IDLE";
+    
+    if (node.processingData) {
+        document.getElementById('ins-op').innerText = "BLACK-SCHOLES";
+        document.getElementById('ins-in-a').innerText = "$" + node.processingData.price;
+        document.getElementById('ins-in-b').innerText = node.processingData.volatility;
+        
+        let risk = (parseFloat(node.processingData.price) * parseFloat(node.processingData.volatility)).toFixed(4);
+        const el = document.getElementById('ins-out');
+        el.innerText = risk;
+        
+        if(node.processingData.volatility > 0.5) {
+            el.classList.add('alert');
+            el.innerText += " (RISK!)";
+        } else {
+            el.classList.remove('alert');
+        }
+    }
+}
+
+// --- LOGIC FUNCTIONS ---
+
+function switchArch(mode) {
+    state.mode = mode;
+    state.packets = []; // Clear packets
+    state.tps = 0;
+    state.latency = 0;
+    state.offsetY = 0;
+    state.offsetX = 0;
+    
+    document.getElementById('btn-fpga').classList.toggle('active', mode === 'FPGA');
+    document.getElementById('btn-cpu').classList.toggle('active', mode === 'CPU');
+
+    if(mode === 'FPGA') {
+        buildFPGA();
+    } else {
+        buildCPU();
+    }
+}
+
+function triggerAttack() {
+    state.isAttack = true;
+    document.querySelector('.crime-btn').innerText = "⚠️ ATTACK IN PROGRESS...";
+}
+
+function endAttack() {
+    state.isAttack = false;
+    document.querySelector('.crime-btn').innerText = "⚠️ SIMULATE SPOOFING ATTACK";
+}
+
+function spawnPacket() {
+    // Determine Type
+    const type = (state.isAttack && Math.random() > 0.5) ? 'attack' : 'normal';
+    
+    // Spawn Logic
+    let rate = state.mode === 'FPGA' ? CONFIG.fpga.spawnRate : CONFIG.cpu.spawnRate;
+    if (state.isAttack) rate *= 3; // Flood attack
+
+    for(let i=0; i<rate; i++) {
+        const p = new Packet(-450, 0, type);
+        
+        // Define Path based on Architecture
+        if (state.mode === 'FPGA') {
+            const pcie = state.nodes.find(n => n.id === 'pcie');
+            const dma = state.nodes.find(n => n.id === 'dma');
+            const hbm = state.nodes.find(n => n.id === 'hbm');
+            const sec = state.nodes.find(n => n.id === 'sec');
+            const out = state.nodes.find(n => n.id === 'out');
             
-            if(mode === 'fpga') {
-                btns[0].classList.add('active-fpga');
-                btns[1].classList.remove('active-cpu');
-                fpgaView.style.display = 'block';
-                cpuView.style.display = 'none';
-                document.querySelector('.status-light').style.background = '#00f2ea';
-                document.querySelector('.status-light').style.boxShadow = '0 0 10px #00f2ea';
-            } else {
-                btns[0].classList.remove('active-fpga');
-                btns[1].classList.add('active-cpu');
-                fpgaView.style.display = 'none';
-                cpuView.style.display = 'block';
-                document.querySelector('.status-light').style.background = '#ff3366';
-                document.querySelector('.status-light').style.boxShadow = '0 0 10px #ff3366';
-                
-                // Clear FPGA particles
-                document.querySelectorAll('.fpga-particle').forEach(p => p.remove());
-            }
+            // Random DSP Core
+            const row = Math.floor(Math.random() * 8);
+            const col = Math.floor(Math.random() * 8);
+            const dsp = state.nodes.find(n => n.id === `dsp_${row}_${col}`);
+            
+            p.path = [pcie, dma, hbm, dsp, sec, out];
+        
+        } else {
+            const ram = state.nodes.find(n => n.id === 'ram');
+            const bus = state.nodes.find(n => n.id === 'bus');
+            const l3 = state.nodes.find(n => n.id === 'l3');
+            const wb = state.nodes.find(n => n.id === 'wb');
+            
+            // Random Core
+            const coreId = Math.floor(Math.random() * 4);
+            const core = state.nodes.find(n => n.id === `core_${coreId}`);
+            
+            p.path = [ram, bus, l3, core, wb];
         }
+        
+        state.packets.push(p);
+    }
+}
 
-        animate();
+// --- RENDER LOOP ---
 
-    </script>
+function drawWires() {
+    ctx.strokeStyle = '#2d3b4f';
+    ctx.lineWidth = 2 / state.zoom;
+    ctx.beginPath();
+    // Simplified: Draw lines between sequential nodes in paths of active packets
+    // to simulate bus activity, or just static connections
+    
+    // Draw static grid for FPGA
+    if (state.mode === 'FPGA') {
+        state.nodes.forEach(n => {
+            if(n.id.startsWith('dsp')) {
+                // Connect to neighbors
+            }
+        });
+    }
+    ctx.stroke();
+}
+
+function loop() {
+    // 1. Clear
+    ctx.fillStyle = '#0b0c10';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 2. Camera Transform
+    ctx.save();
+    ctx.translate(canvas.width/2 + state.offsetX, canvas.height/2 + state.offsetY);
+    ctx.scale(state.zoom, state.zoom);
+
+    // 3. Grid Background
+    ctx.strokeStyle = 'rgba(102, 252, 241, 0.05)';
+    ctx.lineWidth = 1 / state.zoom;
+    const gridSize = 50;
+    const range = 2000 / state.zoom;
+    ctx.beginPath();
+    for(let x = -range; x <= range; x+=gridSize) { ctx.moveTo(x, -range); ctx.lineTo(x, range); }
+    for(let y = -range; y <= range; y+=gridSize) { ctx.moveTo(-range, y); ctx.lineTo(range, y); }
+    ctx.stroke();
+
+    // 4. Spawn Packets
+    spawnPacket();
+
+    // 5. Update & Draw Nodes
+    state.nodes.forEach(n => n.draw(ctx));
+
+    // 6. Update & Draw Packets
+    state.packets.forEach(p => {
+        p.update();
+        p.draw(ctx);
+    });
+
+    // Cleanup dead packets
+    state.packets = state.packets.filter(p => !p.dead);
+
+    ctx.restore();
+
+    // 7. Update UI Stats
+    document.getElementById('tps-display').innerText = Math.floor(state.tps * 60).toLocaleString();
+    
+    let lat = state.mode === 'FPGA' ? 12.1 : 450;
+    if (state.mode === 'CPU' && state.isAttack) lat += Math.random() * 300; // Jitter
+    document.getElementById('lat-display').innerText = lat.toFixed(1) + " µs";
+    
+    document.getElementById('dropped-display').innerText = state.blocked;
+
+    if (state.selectedNode) updateInspector(state.selectedNode);
+
+    requestAnimationFrame(loop);
+}
+
+// --- INITIALIZATION ---
+window.onload = () => {
+    document.getElementById('loader').style.opacity = 0;
+    setTimeout(() => document.getElementById('loader').remove(), 500);
+    switchArch('FPGA');
+    loop();
+};
+
+</script>
 </body>
 </html>
