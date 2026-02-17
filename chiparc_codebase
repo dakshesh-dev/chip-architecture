@@ -240,9 +240,9 @@ class HighFreqTrader:
         self.running = True
         try:
             self.ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.1)
-            print(f"🚀 HARDWARE LINK ESTABLISHED: {SERIAL_PORT}")
+            print(f" HARDWARE LINK ESTABLISHED: {SERIAL_PORT}")
         except:
-            print("❌ HARDWARE NOT FOUND. ENTERING SIMULATION MODE.")
+            print(" HARDWARE NOT FOUND. ENTERING SIMULATION MODE.")
             self.ser = None
 
     def float_to_fixed(self, f):
