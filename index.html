@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Architecture Comparison | AI-Powered Accelerator</title>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --blueprint-blue: #161b22;
+            --grid-line: #30363d;
+            --accent-fpga: #238636; /* GitHub Green */
+            --accent-cpu: #da3633; /* Red */
+            --text-main: #c9d1d9;
+            --text-dim: #8b949e;
+            --data-packet: #58a6ff;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- HEADER & CONTROLS --- */
+        header {
+            padding: 15px 20px;
+            background: var(--blueprint-blue);
+            border-bottom: 1px solid var(--grid-line);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            margin: 0;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .toggle-container {
+            display: flex;
+            background: var(--bg-color);
+            border-radius: 8px;
+            padding: 4px;
+            border: 1px solid var(--grid-line);
+        }
+
+        .toggle-btn {
+            background: transparent;
+            color: var(--text-dim);
+            border: none;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-btn.active-fpga {
+            background: rgba(35, 134, 54, 0.2);
+            color: #3fb950;
+            border: 1px solid rgba(35, 134, 54, 0.5);
+        }
+
+        .toggle-btn.active-cpu {
+            background: rgba(218, 54, 51, 0.2);
+            color: #f85149;
+            border: 1px solid rgba(218, 54, 51, 0.5);
+        }
+
+        /* --- MAIN VIEWPORT --- */
+        main {
+            flex: 1;
+            position: relative;
+            background-image: 
+                linear-gradient(var(--grid-line) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+            background-size: 40px 40px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* --- INFO PANEL (IPAD SIDEBAR) --- */
+        .info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 300px;
+            background: rgba(22, 27, 34, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--grid-line);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+            max-height: 40vh;
+            overflow-y: auto;
+        }
+
+        .info-panel h2 {
+            font-size: 1rem;
+            margin-top: 0;
+            color: var(--data-packet);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--grid-line);
+            padding-bottom: 10px;
+        }
+
+        .info-panel p {
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: var(--text-dim);
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 0.85rem;
+        }
+
+        .stat-val {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: var(--text-main);
+        }
+
+        /* --- CHIP DIAGRAM CONTAINER --- */
+        .chip-container {
+            position: relative;
+            width: 600px;
+            height: 400px;
+            background: #0d1117;
+            border: 2px solid var(--grid-line);
+            border-radius: 4px;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            transition: all 0.5s ease;
+        }
+
+        /* --- FPGA SPECIFIC LAYOUT --- */
+        .fpga-layout {
+            display: grid;
+            grid-template-rows: 15% 1fr 15%;
+            height: 100%;
+            padding: 10px;
+            gap: 10px;
+        }
+
+        .hbm-block {
+            background: rgba(88, 166, 255, 0.1);
+            border: 1px solid #1f6feb;
+            color: #58a6ff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.8rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+
+        .tensor-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            gap: 4px;
+        }
+
+        .core {
+            background: rgba(35, 134, 54, 0.1);
+            border: 1px solid rgba(35, 134, 54, 0.4);
+            position: relative;
+        }
+        
+        /* The "firing" animation for FPGA cores */
+        .core.active {
+            animation: pulse-green 1s infinite;
+        }
+
+        /* --- CPU SPECIFIC LAYOUT --- */
+        .cpu-layout {
+            display: none; /* Hidden by default */
+            height: 100%;
+            position: relative;
+            padding: 20px;
+        }
+
+        .cpu-core-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            height: 60%;
+            justify-content: center;
+        }
+
+        .cpu-core {
+            width: 45%;
+            height: 45%;
+            background: rgba(218, 54, 51, 0.1);
+            border: 1px solid rgba(218, 54, 51, 0.4);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #f85149;
+            font-weight: bold;
+        }
+
+        .cpu-cache {
+            height: 30%;
+            margin-top: 10px;
+            background: rgba(210, 153, 34, 0.1);
+            border: 1px solid #d29922;
+            color: #d29922;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+        }
+
+        /* --- DATA FLOW ANIMATIONS --- */
+        .packet {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 4px #fff;
+            z-index: 5;
+            opacity: 0;
+        }
+
+        /* FPGA: Parallel Rain */
+        @keyframes flow-parallel {
+            0% { top: 15%; opacity: 1; }
+            100% { top: 85%; opacity: 1; }
+        }
+
+        /* CPU: Serial Line */
+        @keyframes flow-serial {
+            0% { top: 0; left: 50%; opacity: 1; }
+            40% { top: 40%; left: 50%; } /* Hit Cache */
+            60% { top: 50%; left: 25%; } /* Branch to core 1 */
+            100% { top: 50%; left: 25%; opacity: 0; } /* Process */
+        }
+
+        @keyframes pulse-green {
+            0% { background: rgba(35, 134, 54, 0.1); }
+            50% { background: rgba(35, 134, 54, 0.6); }
+            100% { background: rgba(35, 134, 54, 0.1); }
+        }
+
+        @keyframes pulse-red {
+            0% { background: rgba(218, 54, 51, 0.1); }
+            50% { background: rgba(218, 54, 51, 0.6); }
+            100% { background: rgba(218, 54, 51, 0.1); }
+        }
+
+        /* Responsive adjustments for iPad Portrait */
+        @media (max-width: 768px) {
+            .chip-container { width: 90%; height: 50vh; }
+            .info-panel { width: 90%; left: 5%; bottom: 20px; }
+            header h1 { font-size: 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>ACCELERATOR ARCHITECTURE</h1>
+        <div class="toggle-container">
+            <button class="toggle-btn active-fpga" onclick="setMode('fpga')">FPGA (Ours)</button>
+            <button class="toggle-btn" onclick="setMode('cpu')">CPU (Standard)</button>
+        </div>
+    </header>
+
+    <main>
+        <div class="chip-container" id="chipBox">
+            
+            <div class="fpga-layout" id="fpgaView">
+                <div class="hbm-block">HIGH BANDWIDTH MEMORY (HBM)</div>
+                <div class="tensor-grid" id="tensorGrid">
+                    </div>
+                <div class="hbm-block">OUTPUT BUFFER</div>
+            </div>
+
+            <div class="cpu-layout" id="cpuView">
+                <div class="cpu-core-container">
+                    <div class="cpu-core">CORE 1</div>
+                    <div class="cpu-core">CORE 2</div>
+                    <div class="cpu-core">CORE 3</div>
+                    <div class="cpu-core">CORE 4</div>
+                </div>
+                <div class="cpu-cache">SHARED L3 CACHE (BOTTLENECK)</div>
+            </div>
+
+        </div>
+
+        <div class="info-panel" id="infoPanel">
+            <h2 id="infoTitle">FPGA ARCHITECTURE</h2>
+            <p id="infoDesc">
+                The Parallel Tensor Grid utilizes 64 independent DSP cores to execute Black-Scholes financial models simultaneously. Data streams directly from HBM, bypassing OS overhead.
+            </p>
+            <div class="stat-row">
+                <span>Latency</span>
+                <span class="stat-val" id="statLatency">12.1 µs</span>
+            </div>
+            <div class="stat-row">
+                <span>Throughput</span>
+                <span class="stat-val" id="statThroughput">83,298 TPS</span>
+            </div>
+            <div class="stat-row">
+                <span>Architecture</span>
+                <span class="stat-val" id="statArch">Dataflow (Parallel)</span>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const tensorGrid = document.getElementById('tensorGrid');
+        const fpgaView = document.getElementById('fpgaView');
+        const cpuView = document.getElementById('cpuView');
+        const chipBox = document.getElementById('chipBox');
+        
+        const infoTitle = document.getElementById('infoTitle');
+        const infoDesc = document.getElementById('infoDesc');
+        const statLatency = document.getElementById('statLatency');
+        const statThroughput = document.getElementById('statThroughput');
+        const statArch = document.getElementById('statArch');
+
+        // Initialize FPGA Grid (64 Cores)
+        for (let i = 0; i < 64; i++) {
+            let core = document.createElement('div');
+            core.className = 'core active';
+            core.style.animationDelay = Math.random() + 's'; // Random firing
+            tensorGrid.appendChild(core);
+        }
+
+        // Add Data Packets for FPGA (Parallel Rain)
+        function createFpgaPacket() {
+            if (cpuView.style.display === 'block') return;
+            
+            const packet = document.createElement('div');
+            packet.className = 'packet';
+            packet.style.left = Math.random() * 95 + '%';
+            packet.style.animation = `flow-parallel ${0.5 + Math.random()}s linear`;
+            
+            fpgaView.appendChild(packet);
+
+            setTimeout(() => { packet.remove(); }, 1500);
+        }
+
+        // Add Data Packets for CPU (Serial Queue)
+        function createCpuPacket() {
+            if (fpgaView.style.display === 'grid') return;
+
+            const packet = document.createElement('div');
+            packet.className = 'packet';
+            packet.style.background = '#f85149'; // Red for CPU
+            packet.style.boxShadow = '0 0 4px #f85149';
+            packet.style.animation = `flow-serial 2s ease-in-out`;
+            
+            cpuView.appendChild(packet);
+
+            setTimeout(() => { packet.remove(); }, 2000);
+        }
+
+        // Animation Loops
+        setInterval(createFpgaPacket, 50);  // High frequency (Parallel)
+        setInterval(createCpuPacket, 400);  // Low frequency (Serial)
+
+        function setMode(mode) {
+            const btns = document.querySelectorAll('.toggle-btn');
+            btns.forEach(b => b.classList.remove('active-fpga', 'active-cpu'));
+
+            if (mode === 'fpga') {
+                btns[0].classList.add('active-fpga');
+                fpgaView.style.display = 'grid';
+                cpuView.style.display = 'none';
+                
+                // Update Info
+                infoTitle.innerText = "FPGA ARCHITECTURE";
+                infoTitle.style.color = "#58a6ff";
+                infoDesc.innerText = "The Parallel Tensor Grid utilizes 64 independent DSP cores to execute Black-Scholes financial models simultaneously. Data streams directly from HBM without OS interruption.";
+                statLatency.innerText = "12.1 µs";
+                statThroughput.innerText = "83,298 TPS";
+                statArch.innerText = "Parallel Dataflow";
+                
+                chipBox.style.borderColor = "#238636"; // Green border
+
+            } else {
+                btns[1].classList.add('active-cpu');
+                fpgaView.style.display = 'none';
+                cpuView.style.display = 'block';
+
+                // Update Info
+                infoTitle.innerText = "STANDARD CPU (VON NEUMANN)";
+                infoTitle.style.color = "#f85149";
+                infoDesc.innerText = "Traditional High-Performance CPUs (e.g., i9/Threadripper) rely on shared cache and sequential processing. The operating system and thread management create significant latency jitter.";
+                statLatency.innerText = "452.4 µs";
+                statThroughput.innerText = "2,196 TPS";
+                statArch.innerText = "Serial Control Flow";
+                
+                chipBox.style.borderColor = "#da3633"; // Red border
+            }
+        }
+    </script>
+</body>
+</html>
