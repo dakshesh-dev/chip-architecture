@@ -334,3 +334,4 @@ plt.show()
 trader.running = False
 t1.join()
 t2.join()
+            
